@@ -14,7 +14,7 @@ from tqdm import tqdm
 from east_dataset import EASTDataset
 from dataset import SceneTextDataset
 from model import EAST
-
+from seed import seed_everything
 
 def parse_args():
     parser = ArgumentParser()
@@ -92,6 +92,7 @@ def do_training(data_dir, model_dir, device, image_size, input_size, num_workers
 
 
 def main(args):
+    seed_everything(2021)
     do_training(**args.__dict__)
 
 
