@@ -91,16 +91,17 @@ Because it is hard to implement the three modules in OCR task, we are going to s
 
 ## 4.1. Final Model
 
-| Key           |       Value       | 비고                                 |
-| ------------- | :---------------: | ------------------------------------ |
-| Text Detector |   EAST (fixed)    | Pretrained Weight - ImageNet (fixed) |
-| Optimizer     |       Adam        |                                      |
-| Learning Rate |       1e-4        |                                      |
-| LR Scheduler  |    MultiStepLR    |                                      |
-| Loss          | EAST Loss (fixed) |                                      |
-| Batch Size    |         8         |                                      |
-| Epochs        |        200        |                                      |
-| Input Size    |        512        |                                      |
+| Key           |        Value        | 비고                                   |
+| ------------- | :-----------------: | -------------------------------------- |
+| Text Detector |   EAST *(fixed)*    | Pretrained Weight - ImageNet *(fixed)* |
+| Backbone      |  VGG 16 *(fixed)*   | Pretrained Weight - ImageNet *(fixed)* |
+| Optimizer     |        Adam         |                                        |
+| Learning Rate |        1e-4         |                                        |
+| LR Scheduler  |     MultiStepLR     |                                        |
+| Loss          | EAST Loss *(fixed)* |                                        |
+| Batch Size    |          8          |                                        |
+| Epochs        |         200         |                                        |
+| Input Size    |         512         |                                        |
 
 ## 4.2. Final Metric in the Competition
 
