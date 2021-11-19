@@ -11,14 +11,14 @@
 2. Code Execution : `convert_mlt.py`
    
    ```bash
-   train.py --data_dir ../input/data/ICDAR19_MLT_ufo --ckpt_name latest.pth --wandb_name 2019_MLT --batch_size 32
+   # ICDAR 2019 모든 언어의 이미지를 dst_dir로 복사하고 메타데이터를 ufo 포맷으로 변환
+   python convert_mlt.py --src_dir ../input/data/ICDAR19_MLT --dst_dir ../input/data/ICDAR19_MLT_ufo --is_mlt19 True
    ```
 
 3. Code Execution : `train.py` 
 
    ```bash
-   # ICDAR 2019 모든 언어의 이미지를 dst_dir로 복사하고 메타데이터를 ufo 포맷으로 변환
-   python convert_mlt.py --src_dir ../input/data/ICDAR19_MLT --dst_dir ../input/data/ICDAR19_MLT_ufo --is_mlt19 True
+   train.py --data_dir ../input/data/ICDAR19_MLT_ufo --ckpt_name latest.pth --wandb_name 2019_MLT --batch_size 32
    ```
    
 # :one: Overview
