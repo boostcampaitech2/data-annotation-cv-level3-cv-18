@@ -122,7 +122,7 @@ Because it is hard to implement the three modules in OCR task, we are going to s
 | Learning Rate |        1e-4         |                                        |
 | LR Scheduler  |     MultiStepLR     |                                        |
 | Loss          | EAST Loss *(fixed)* |                                        |
-| Batch Size    |          8          |                                        |
+| Batch Size    |          32         |                                        |
 | Epochs        |         200         |                                        |
 | Input Size    |         512         |                                        |
 
