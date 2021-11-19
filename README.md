@@ -8,7 +8,7 @@
    $ pip install -r requirements.txt
    ```
 
-2. Code Execution : `convert_mlt.pu`
+2. Code Execution : `convert_mlt.py`
    
    ```bash
    train.py --data_dir ../input/data/ICDAR19_MLT_ufo --ckpt_name latest.pth --wandb_name 2019_MLT --batch_size 32
