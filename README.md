@@ -1,3 +1,22 @@
+# :zero: Get Our Results
+
+1. Conda Environments *(Recommended)* 
+
+   ```bash
+   $ conda create -n data_annotation python=3.7.2
+   $ conda activate data_annotation
+   $ pip install -r requirements.txt
+   ```
+
+2. Code Execution
+
+   ```bash
+   ```
+
+3. 
+
+   
+
 # :one: Overview
 
 ## 1.0. 대회의 목적 
