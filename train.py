@@ -16,6 +16,8 @@ from dataset import SceneTextDataset
 from model import EAST
 from seed import seed_everything
 
+import wandb
+
 def parse_args():
     parser = ArgumentParser()
 
@@ -34,6 +36,14 @@ def parse_args():
     parser.add_argument('--learning_rate', type=float, default=1e-3)
     parser.add_argument('--max_epoch', type=int, default=200)
     parser.add_argument('--save_interval', type=int, default=5)
+    
+    # rename pth
+    parser.add_argument('--ckpt_name', type=str, default='latest.pth')
+    
+    # WandB parser
+    parser.add_argument('--wandb_entity', type=str, default='ai_tech_level2-cv-18')    
+    parser.add_argument('--wandb_project', type=str, default='Defalut')
+    parser.add_argument('--wandb_name', type=str, default='Defalut')
 
     args = parser.parse_args()
 
@@ -44,7 +54,18 @@ def parse_args():
 
 
 def do_training(data_dir, model_dir, device, image_size, input_size, num_workers, batch_size,
-                learning_rate, max_epoch, save_interval):
+                learning_rate, max_epoch, save_interval, ckpt_name, wandb_entity, wandb_project, wandb_name):
+
+    # WandB setting
+    wandb_name += '-im:'+str(image_size)+'-in:'+str(input_size)+'-bs:'+str(batch_size)+'-lr:'+str(learning_rate)+'-ep:'+str(max_epoch)
+    print('WandB name:',wandb_name)
+    wandb.login()
+    wandb.init(entity = wandb_entity, # 팀 지정
+               project = wandb_project, # 폴더 지정 
+               name = wandb_name # 이름 지정
+              )
+
+
     dataset = SceneTextDataset(data_dir, split='train', image_size=image_size, crop_size=input_size)
     dataset = EASTDataset(dataset)
     num_batches = math.ceil(len(dataset) / batch_size)
@@ -56,13 +77,21 @@ def do_training(data_dir, model_dir, device, image_size, input_size, num_workers
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=[max_epoch // 2], gamma=0.1)
 
+
+    # WandB watch
+    wandb.watch(model, log=all)
+
     model.train()
+    best_loss = 999
     for epoch in range(max_epoch):
         epoch_loss, epoch_start = 0, time.time()
+
+        # Mean loss array for WandB logging
+        train_avg_cls, train_avg_angle, train_avg_iou = np.array([]), np.array([]), np.array([])
+        
         with tqdm(total=num_batches) as pbar:
             for img, gt_score_map, gt_geo_map, roi_mask in train_loader:
                 pbar.set_description('[Epoch {}]'.format(epoch + 1))
-
                 loss, extra_info = model.train_step(img, gt_score_map, gt_geo_map, roi_mask)
                 optimizer.zero_grad()
                 loss.backward()
@@ -70,6 +99,11 @@ def do_training(data_dir, model_dir, device, image_size, input_size, num_workers
 
                 loss_val = loss.item()
                 epoch_loss += loss_val
+
+                # append losses
+                train_avg_cls = np.append(train_avg_cls, extra_info['cls_loss'])
+                train_avg_angle = np.append(train_avg_angle, extra_info['angle_loss'])
+                train_avg_iou = np.append(train_avg_iou, extra_info['iou_loss'])
 
                 pbar.update(1)
                 val_dict = {
@@ -79,16 +113,25 @@ def do_training(data_dir, model_dir, device, image_size, input_size, num_workers
                 pbar.set_postfix(val_dict)
 
         scheduler.step()
-
+        
+        mean_loss = epoch_loss / num_batches
+        
         print('Mean loss: {:.4f} | Elapsed time: {}'.format(
-            epoch_loss / num_batches, timedelta(seconds=time.time() - epoch_start)))
+            mean_loss, timedelta(seconds=time.time() - epoch_start)))
+        
+        # WandB logging
+        wandb.log({'Mean loss': mean_loss, 'Mean Cls loss':np.mean(train_avg_cls), 
+                'Mean Angle loss':np.mean(train_avg_angle), 'Mean IoU loss':np.mean(train_avg_iou), 
+                }, step=epoch)
 
         if (epoch + 1) % save_interval == 0:
             if not osp.exists(model_dir):
                 os.makedirs(model_dir)
-
-            ckpt_fpath = osp.join(model_dir, 'latest.pth')
-            torch.save(model.state_dict(), ckpt_fpath)
+            if best_loss > mean_loss:
+                print(f'Saving chpt at {epoch+1} epoch')
+                best_loss = mean_loss
+                ckpt_fpath = osp.join(model_dir, ckpt_name)
+                torch.save(model.state_dict(), ckpt_fpath)
 
 
 def main(args):
