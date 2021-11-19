@@ -7,13 +7,10 @@ from PIL import Image
 import numpy as np
 from tqdm import tqdm
 
+# Data load Multiprocessing
 from torch.utils.data import DataLoader, ConcatDataset, Dataset
 
-
-SRC_DATASET_DIR = '/data/datasets/ICDAR17_MLT'  # FIXME
-DST_DATASET_DIR = '/data/datasets/ICDAR17_Korean'  # FIXME
-
-NUM_WORKERS = 32  # FIXME
+from argparse import ArgumentParser
 
 IMAGE_EXTENSIONS = {'.gif', '.jpg', '.png'}
 
@@ -22,6 +19,20 @@ LANGUAGE_MAP = {
     'Latin': 'en',
     'Symbols': None
 }
+
+def parse_args():
+    parser = ArgumentParser()
+
+    parser.add_argument('--src_dir', type=str, default='../input/data/ICDAR17_MLT')
+    parser.add_argument('--dst_dir', type=str, default='../input/data/ICDAR17_MLT_v2')
+    parser.add_argument('--is_mlt19', type=bool, default=False)
+    parser.add_argument('--lang', type=str, default='all')
+    parser.add_argument('--num_workers', type=int, default=4)
+    
+    args = parser.parse_args()
+
+    return args
+
 
 def get_language_token(x):
     return LANGUAGE_MAP.get(x, 'others')
@@ -32,8 +43,8 @@ def maybe_mkdir(x):
         os.makedirs(x)
 
 
-class MLT17Dataset(Dataset):
-    def __init__(self, image_dir, label_dir, copy_images_to=None):
+class MLT1719Dataset(Dataset):
+    def __init__(self, image_dir, label_dir, is_mlt19, lang, copy_images_to=None):
         image_paths = {x for x in glob(osp.join(image_dir, '*')) if osp.splitext(x)[1] in
                        IMAGE_EXTENSIONS}
         label_paths = set(glob(osp.join(label_dir, '*.txt')))
@@ -42,14 +53,22 @@ class MLT17Dataset(Dataset):
         sample_ids, samples_info = list(), dict()
         for image_path in image_paths:
             sample_id = osp.splitext(osp.basename(image_path))[0]
-
-            label_path = osp.join(label_dir, 'gt_{}.txt'.format(sample_id))
+            
+            if is_mlt19:
+                label_path = osp.join(label_dir, '{}.txt'.format(sample_id))    # ICDAR2019
+            else:
+                label_path = osp.join(label_dir, 'gt_{}.txt'.format(sample_id)) # ICDAR2017
+                
             assert label_path in label_paths
 
             words_info, extra_info = self.parse_label_file(label_path)
-            if 'ko' not in extra_info['languages'] or extra_info['languages'].difference({'ko', 'en'}):
-                continue
-
+            
+            # Korean + etc
+            if lang == 'kor':
+                if 'ko' not in extra_info['languages']:
+                    continue
+            
+            # Information of images
             sample_ids.append(sample_id)
             samples_info[sample_id] = dict(image_path=image_path, label_path=label_path,
                                            words_info=words_info)
@@ -71,15 +90,19 @@ class MLT17Dataset(Dataset):
         if self.copy_images_to:
             maybe_mkdir(self.copy_images_to)
             image.save(osp.join(self.copy_images_to, osp.basename(sample_info['image_path'])))
-
+        
+        # 라이센스 민감하지 않으면 None 반환해도 좋다.
         license_tag = dict(usability=True, public=True, commercial=True, type='CC-BY-SA',
                            holder=None)
         sample_info_ufo = dict(img_h=img_h, img_w=img_w, words=sample_info['words_info'], tags=None,
                                license_tag=license_tag)
 
         return image_fname, sample_info_ufo
-
+    
+    # Read line by line
     def parse_label_file(self, label_path):
+
+        # Sum nested list and rollback
         def rearrange_points(points):
             start_idx = np.argmin([np.linalg.norm(p, ord=1) for p in points])
             if start_idx != 0:
@@ -95,10 +118,12 @@ class MLT17Dataset(Dataset):
             language, transcription = items[8], items[9]
             points = np.array(items[:8], dtype=np.float32).reshape(4, 2).tolist()
             points = rearrange_points(points)
-
+            
             illegibility = transcription == '###'
             orientation = 'Horizontal'
             language = get_language_token(language)
+
+            # Save information to dict
             words_info[word_idx] = dict(
                 points=points, transcription=transcription, language=[language],
                 illegibility=illegibility, orientation=orientation, word_tags=None
@@ -106,32 +131,62 @@ class MLT17Dataset(Dataset):
             languages.add(language)
 
         return words_info, dict(languages=languages)
+    
+    
+def do_converting(src_dir, dst_dir, is_mlt19, lang, num_workers):
+    # Copy O
+    dst_image_dir = osp.join(dst_dir, 'images')
+    
+    # Copy X
+    # dst_image_dir = None 
+    
+    # Class instantiation
+    if is_mlt19:
+        mlt_total = MLT1719Dataset(osp.join(src_dir, 'training_images'),
+                                    osp.join(src_dir, 'training_gt'),
+                                    copy_images_to=dst_image_dir,
+                                   is_mlt19 = is_mlt19, 
+                                   lang = lang,)
+    else:
+        mlt_train = MLT1719Dataset(osp.join(src_dir, 'training_images'),
+                                   osp.join(src_dir, 'training_gt'),
+                                   copy_images_to=dst_image_dir,
+                                   is_mlt19 = is_mlt19, 
+                                   lang = lang,
+                                  )
 
+        mlt_valid = MLT1719Dataset(osp.join(dst_dir, 'validation_images'),
+                                   osp.join(dst_dir, 'validation_gt'),
+                                   copy_images_to = dst_image_dir,
+                                   is_mlt19 = is_mlt19, 
+                                   lang = lang,
+                                  )
+        
+        # Use all dataset(mlt_train+mlt_valid) to training
+        mlt_total = ConcatDataset([mlt_train, mlt_valid])
+                               
 
-def main():
-    dst_image_dir = osp.join(DST_DATASET_DIR, 'images')
-    # dst_image_dir = None
-
-    mlt_train = MLT17Dataset(osp.join(SRC_DATASET_DIR, 'raw/ch8_training_images'),
-                             osp.join(SRC_DATASET_DIR, 'raw/ch8_training_gt'),
-                             copy_images_to=dst_image_dir)
-    mlt_valid = MLT17Dataset(osp.join(SRC_DATASET_DIR, 'raw/ch8_validation_images'),
-                             osp.join(SRC_DATASET_DIR, 'raw/ch8_validation_gt'),
-                             copy_images_to=dst_image_dir)
-    mlt_merged = ConcatDataset([mlt_train, mlt_valid])
-
+    # Initialize dict
     anno = dict(images=dict())
-    with tqdm(total=len(mlt_merged)) as pbar:
-        for batch in DataLoader(mlt_merged, num_workers=NUM_WORKERS, collate_fn=lambda x: x):
+    with tqdm(total=len(mlt_total)) as pbar:
+        # Use multiprocessing
+        for batch in DataLoader(mlt_total, num_workers=num_workers, collate_fn=lambda x: x):
             image_fname, sample_info = batch[0]
             anno['images'][image_fname] = sample_info
             pbar.update(1)
 
-    ufo_dir = osp.join(DST_DATASET_DIR, 'ufo')
+    ufo_dir = osp.join(dst_dir, 'ufo')
     maybe_mkdir(ufo_dir)
+    
+    # Make train.json
     with open(osp.join(ufo_dir, 'train.json'), 'w') as f:
         json.dump(anno, f, indent=4)
 
+        
+def main(args):
+    do_converting(**args.__dict__)
+
 
 if __name__ == '__main__':
-    main()
+    args = parse_args()
+    main(args)
